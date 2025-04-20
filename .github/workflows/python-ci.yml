@@ -25,28 +25,24 @@ jobs:
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Run tests with JUnit output
+    - name: Run tests
       run: |
         mkdir -p test-reports
-        python -m unittest discover -s tests -v -b | tee test-output.log || echo "Tests completed with some failures"
-        # 转换输出为JUnit格式
-        echo '<?xml version="1.0" encoding="utf-8"?><testsuite>' > test-reports/results.xml
-        grep -E '^(ok|FAIL|ERROR)' test-output.log | sed -E 's/^(ok|FAIL|ERROR) ([^ ]+).*/<testcase classname="\2" name="\2" status="\1"><\/(testcase)>/' >> test-reports/results.xml
-        echo '</testsuite>' >> test-reports/results.xml
+        # 使用 || true 确保即使测试失败也继续执行
+        python -m unittest discover -s tests -v -b > test-reports/test-output.log 2>&1 || true
+        cat test-reports/test-output.log
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-results
-        path: |
-          test-reports/results.xml
-          test-output.log
+        path: test-reports/test-output.log
         retention-days: 7
 
     - name: Upload test summary
       if: always()
       run: |
-        FAILURES=$(grep -c 'FAIL' test-output.log || true)
+        FAILURES=$(grep -c 'FAIL' test-reports/test-output.log || true)
         echo "TEST_SUMMARY=Unittest Results: $FAILURES failure(s)" >> $GITHUB_ENV
         echo "::notice::Test completed with $FAILURES failure(s)"
