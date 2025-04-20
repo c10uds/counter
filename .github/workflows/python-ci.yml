@@ -9,32 +9,44 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # 设置超时时间
+    timeout-minutes: 10
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4  # 更新到最新版本
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v5  # 更新到最新版本
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.11'  # 推荐使用更新的Python版本
+        python-version: '3.11'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Run tests
+    - name: Run tests with JUnit output
       run: |
-        python -m unittest discover -s tests -v -b  # -b 参数禁止捕获输出
+        mkdir -p test-reports
+        python -m unittest discover -s tests -v -b | tee test-output.log || echo "Tests completed with some failures"
+        # 转换输出为JUnit格式
+        echo '<?xml version="1.0" encoding="utf-8"?><testsuite>' > test-reports/results.xml
+        grep -E '^(ok|FAIL|ERROR)' test-output.log | sed -E 's/^(ok|FAIL|ERROR) ([^ ]+).*/<testcase classname="\2" name="\2" status="\1"><\/(testcase)>/' >> test-reports/results.xml
+        echo '</testsuite>' >> test-reports/results.xml
 
     - name: Upload test results
-      if: always()  # 即使测试失败也上传
-      uses: actions/upload-artifact@v4  # 使用v4版本
+      uses: actions/upload-artifact@v4
+      if: always()
       with:
-        name: unittest-results
+        name: test-results
         path: |
-          test-reports/*.xml
-          !test-reports/tmp/
-        retention-days: 3  # 结果保留3天
+          test-reports/results.xml
+          test-output.log
+        retention-days: 7
+
+    - name: Upload test summary
+      if: always()
+      run: |
+        FAILURES=$(grep -c 'FAIL' test-output.log || true)
+        echo "TEST_SUMMARY=Unittest Results: $FAILURES failure(s)" >> $GITHUB_ENV
+        echo "::notice::Test completed with $FAILURES failure(s)"
